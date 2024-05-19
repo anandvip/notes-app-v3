@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Note Taking App</title>
+    <script src="https://unpkg.com/htmx.org"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: black;
+            font-family: 'Roboto', sans-serif;
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        aside {
+            width: 250px;
+            background-color: #fff;
+            padding: 10px;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+        }
+
+        aside.hide {
+            transform: translateX(-110%);
+        }
+
+        aside a {
+            display: block;
+            margin-bottom: 10px;
+            color: #0A1F46;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        main {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: #00D8CA;
+            color: #0A1F46;
+            border-radius: 5px;
+            width: 100%;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #add-note-button {
+            background-color: #00D8CA;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+        }
+
+        #toggle-aside-button {
+            background-color: #00D8CA;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            position: fixed;
+            left: 160px;
+            top: 20px;
+        }
+
+        #notes-container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .note-card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .note-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .highlight {
+            animation: highlight 1s infinite alternate;
+        }
+
+        @keyframes highlight {
+            0% {
+                box-shadow: 0 0 10px #00D8CA;
+            }
+            100% {
+                box-shadow: 0 0 20px #00D8CA;
+            }
+        }
+
+        .contentP {
+            border-bottom: 0.5pt solid #00D8CA;
+            padding: 15px;
+        }
+
+        .contentP:focus {
+            border-color: #0A1F46;
+        }
+
+        .contentP[contenteditable=true]:empty:before {
+            content: attr(data-placeholder);
+            color: #999;
+        }
+
+        .lock-button {
+            background-color: #0A1F46;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+
+        @keyframes tear-paper {
+            0% {
+                transform: scale(1);
+            }
+            25% {
+                transform: scale(1.1) rotate(5deg);
+            }
+            50% {
+                transform: scale(1.2) rotate(-5deg);
+            }
+            75% {
+                transform: scale(1.3) rotate(10deg);
+            }
+            100% {
+                transform: scale(0);
+                opacity: 0;
+            }
+        }
+
+        .delete-animation {
+            animation: tear-paper 1s ease-out forwards;
+        }
+
+        .tag-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .tag {
+            background-color: aqua;
+            border-radius: 15px;
+            padding: 2px 6px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .show-all-button {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #00D8CA;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #tag-list {
+            max-width: 700px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        }
+
+        /* Info Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border: 2px solid #00D8CA;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            animation: ripple 0.6s linear;
+        }
+
+        .modal.active {
+            display: block;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+
+        .close {
+            margin-left: 15px;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        @keyframes ripple {
+            0% {
+                box-shadow: 0 0 0 0 rgba(0, 216, 202, 0.4);
+            }
+            100% {
+                box-shadow: 0 0 0 20px rgba(0, 216, 202, 0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <aside id="note-list">
+        <!-- Note titles as links will be displayed here -->
+    </aside>
+    <main>
+        <header>
+            <div>
+                <h1>Welcome, <span id="userGreeting"></span></h1>
+                <div class="note-info">
+                    You have <span id="noteCount">0</span> notes and <span id="wordCount">0</span> words in this notes app.
+                </div>
+                <div class="tag-filter">
+                    <h3>Filter by Tag:</h3>
+                    <div id="tag-list">
+                        <!-- Tags will be displayed here -->
+                    </div>
+                    <button class="show-all-button" onclick="displayNotes()">Show All Notes</button>
+                </div>
+            </div>
+            <div>
+                <select id="authorSelect">
+                    <option value="User 1">User 1</option>
+                    <option value="custom">Custom</option>
+                </select>
+                <input type="text" id="customAuthorInput" placeholder="Enter custom author name" style="display: none;">
+                <button id="setCustomAuthorButton">Set Author</button>
+                <button id="lockButton" class="lock-button">Lock</button>
+                <span class="info-icon" onclick="toggleModal()">ⓘ</span>
+            </div>
+        </header>
+
+        <div id="notes-container">
+            <!-- Notes will be displayed here -->
+        </div>
+
+        <button id="add-note-button">Add Note</button>
+        <button id="toggle-aside-button" onclick="toggleAside()"> ⬅︎ </button>
+    </main>
+
+    <div id="infoModal" class="modal">
+        <span class="close" onclick="toggleModal()">&times;</span>
+        <p>Important assistive text information from this prompt.</p>
+        <p>1. Note is created and as note scrolls in view it says new note is created and you can scroll this note in view from the sidebar index too!</p>
+        <p>2. Throws a toast if confirmation of note deletion.</p>
+        <p>3. User sorts with tag. Showing notes with [tag name], click show all to go back to see all notes.</p>
+        <p>4. All note cards are created with title field, created on and if user comes back sometime on future date and thinks of adding more relevant details to the note card from the past date adding text in title, tag in content box, note card gets updated on datetime stamp in similar fashion as created on date-time-stamp. App throws toast on this event too, note card is updated and stored in local storage on device.</p>
+    </div>
+
+    <div id="toast" class="toast">Toast message</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.16.0/pdf-lib.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', initialize);
+
+        function initialize() {
+            const addNoteButton = document.getElementById('add-note-button');
+
+            if (!addNoteButton) {
+                console.error('Error: Add note button not found');
+                return;
+            }
+
+            addNoteButton.addEventListener('click', () => {
+                try {
+                    createNoteCard();
+                } catch (error) {
+                    console.error('Error creating note card:', error.message);
+                }
+            });
+
+            loadUserInfo();
+            displayNotes();
+
+            const authorSelect = document.getElementById('authorSelect');
+            const customAuthorInput = document.getElementById('customAuthorInput');
+            const setCustomAuthorButton = document.getElementById('setCustomAuthorButton');
+            const lockButton = document.getElementById('lockButton');
+
+            authorSelect.addEventListener('change', () => {
+                if (authorSelect.value === 'custom') {
+                    customAuthorInput.style.display = 'inline-block';
+                } else {
+                    customAuthorInput.style.display = 'none';
+                }
+            });
+
+            setCustomAuthorButton.addEventListener('click', () => {
+                const selectedAuthor = customAuthorInput.value;
+                if (selectedAuthor.trim() !== '') {
+                    localStorage.setItem('currentAuthor', selectedAuthor);
+                    loadUserInfo();
+                }
+            });
+
+            lockButton.addEventListener('click', () => {
+                alert('Lock functionality will be implemented here.');
+            });
+        }
+
+        function loadUserInfo() {
+            const currentAuthor = localStorage.getItem('currentAuthor') || 'User 1';
+            document.getElementById('userGreeting').innerText = currentAuthor;
+        }
+
+        function displayNotes() {
+            const notesContainer = document.getElementById('notes-container');
+            notesContainer.innerHTML = '';
+            const notes = getNotesFromStorage();
+            notes.forEach((note, index) => {
+                try {
+                    const noteCard = createNoteCard(note, index);
+                    notesContainer.appendChild(noteCard);
+                } catch (error) {
+                    console.error(`Error displaying note ${index}:`, error.message);
+                }
+            });
+            updateNoteInfo(notes.length);
+            updateNoteList();
+            updateTagList();
+        }
+
+        function getNotesFromStorage() {
+            try {
+                const notes = JSON.parse(localStorage.getItem('notes'));
+                return Array.isArray(notes) ? notes : [];
+            } catch (error) {
+                console.error('Error getting notes from storage:', error.message);
+                return [];
+            }
+        }
+
+        function updateNoteInfo(noteCount) {
+            document.getElementById('noteCount').innerText = noteCount;
+            const wordCount = getWordCount();
+            document.getElementById('wordCount').innerText = wordCount;
+        }
+
+        function getWordCount() {
+            const notes = getNotesFromStorage();
+            return notes.reduce((total, note) => total + (note.content ? note.content.trim().split(/\s+/).length : 0), 0);
+        }
+
+        function createNoteCard(note, index) {
+            const notesContainer = document.getElementById('notes-container');
+            const noteCard = document.createElement('div');
+            noteCard.className = 'note-card';
+            noteCard.id = `note-${index}`;
+
+            noteCard.innerHTML += `
+                <div class="note">
+                    <h2 contenteditable="true" onBlur="updateNoteTitle(${index}, this.innerText)">${note ? note.title : 'Edit title'}</h2>
+                    <p>Author: ${getAuthor()}</p>
+                    <p>Created at: ${note ? note.timestamp : getCurrentDateTime()}</p>
+                    <p class="contentP" contenteditable="true" onBlur="updateNoteContent(${index}, this.innerText)" title="edit content here!" data-placeholder="Add Content here!....">${note ? note.content : ''}</p>
+                    <div class="tag-container">
+                        <!-- Tags will be displayed here -->
+                    </div>
+                    <button onclick="deleteNote(${index})"><svg viewBox="0 0 448 512" width="10" title="trash-alt">
+                        <path d="M32 464a48 48 0 0 0 48 48h288a48 48 0 0 0 48-48V128H32zm272-256a16 16 0 0 1 32 0v224a16 16 0 0 1-32 0zm-96 0a16 16 0 0 1 32 0v224a16 16 0 0 1-32 0zm-96 0a16 16 0 0 1 32 0v224a16 16 0 0 1-32 0zM432 32H312l-9.4-18.7A24 24 0 0 0 281.1 0H166.8a23.72 23.72 0 0 0-21.4 13.3L136 32H16A16 16 0 0 0 0 48v32a16 16 0 0 0 16 16h416a16 16 0 0 0 16-16V48a16 16 0 0 0-16-16z" />
+                    </svg></button>
+                    <span class="index-number" style="position: absolute; bottom: 0; right: 0; font-size: 0.5rem;">${index + 1}</span>
+                </div>
+            `;
+
+            notesContainer.appendChild(noteCard);
+            if (!note) {
+                const newNote = { title: '', content: '', author: getAuthor(), timestamp: getCurrentDateTime(), tags: [] };
+                saveNoteToStorage(newNote);
+                noteCard.id = `note-${getNotesFromStorage().length - 1}`;
+                noteCard.querySelector('.index-number').innerText = getNotesFromStorage().length;
+                updateNoteList();
+            } else {
+                updateTagContainer(noteCard, note.tags);
+            }
+            return noteCard;
+        }
+
+        function getAuthor() {
+            return localStorage.getItem('currentAuthor') || 'Unknown';
+        }
+
+        function getCurrentDateTime() {
+            return new Date().toLocaleString();
+        }
+
+        function saveNoteToStorage(note) {
+            const notes = getNotesFromStorage();
+            notes.push(note);
+            localStorage.setItem('notes', JSON.stringify(notes));
+            updateNoteInfo(notes.length);
+        }
+
+        function updateNoteTitle(index, newTitle) {
+            try {
+                const notes = getNotesFromStorage();
+                if (!notes[index]) throw new Error(`Note with index ${index} not found.`);
+                notes[index].title = newTitle;
+                saveNotesToStorage(notes);
+            } catch (error) {
+                console.error(`Error updating title for note ${index}:`, error.message);
+            }
+        }
+
+        function updateNoteContent(index, newContent) {
+            try {
+                const notes = getNotesFromStorage();
+                if (!notes[index]) throw new Error(`Note with index ${index} not found.`);
+                notes[index].content = newContent;
+                notes[index].tags = extractTags(newContent);
+                saveNotesToStorage(notes);
+            } catch (error) {
+                console.error(`Error updating content for note ${index}:`, error.message);
+            }
+        }
+
+        function extractTags(content) {
+            const hashtagRegex = /#\w+/g;
+            const hashtags = content.match(hashtagRegex);
+            return hashtags ? hashtags.map(tag => tag.slice(1)) : [];
+        }
+
+        function saveNotesToStorage(notes) {
+            localStorage.setItem('notes', JSON.stringify(notes));
+            displayNotes();
+        }
+
+        function deleteNote(index) {
+            try {
+                const notes = getNotesFromStorage();
+                if (!notes[index]) throw new Error(`Note with index ${index} not found.`);
+                notes.splice(index, 1);
+                saveNotesToStorage(notes);
+            } catch (error) {
+                console.error(`Error deleting note ${index}:`, error.message);
+            }
+        }
+
+        function updateTagContainer(noteCard, tags) {
+            const tagContainer = noteCard.querySelector('.tag-container');
+            tagContainer.innerHTML = '';
+            tags.forEach(tag => {
+                const tagElement = document.createElement('span');
+                tagElement.className = 'tag';
+                tagElement.textContent = tag;
+                tagElement.addEventListener('click', () => {
+                    filterNotesByTag(tag);
+                });
+                tagContainer.appendChild(tagElement);
+            });
+        }
+
+        function updateNoteList() {
+            const noteList = document.getElementById('note-list');
+            noteList.innerHTML = '';
+            const notes = getNotesFromStorage();
+            notes.forEach((note, index) => {
+                const noteLink = document.createElement('a');
+                noteLink.href = `#note-${index}`;
+                noteLink.innerText = note.title || `Note ${index + 1}`;
+                noteLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    try {
+                        const noteCard = document.getElementById(`note-${index}`);
+                        if (!noteCard) throw new Error(`Note card with index ${index} not found.`);
+                        noteCard.scrollIntoView({ behavior: 'smooth' });
+                        noteCard.classList.add('highlight');
+                        noteCard.addEventListener('click', () => {
+                            noteCard.classList.remove('highlight');
+                        }, { once: true });
+                    } catch (error) {
+                        console.error(`Error scrolling to note ${index}:`, error.message);
+                    }
+                });
+                noteList.appendChild(noteLink);
+            });
+        }
+
+        function updateTagList() {
+            const tagList = document.getElementById('tag-list');
+            tagList.innerHTML = '';
+            const notes = getNotesFromStorage();
+            const allTags = [...new Set(notes.flatMap(note => note.tags))];
+            allTags.forEach(tag => {
+                const tagElement = document.createElement('span');
+                tagElement.className = 'tag';
+                tagElement.textContent = tag;
+                tagElement.addEventListener('click', () => {
+                    filterNotesByTag(tag);
+                });
+                tagList.appendChild(tagElement);
+            });
+        }
+
+        function filterNotesByTag(tag) {
+            const notes = getNotesFromStorage();
+            const notesContainer = document.getElementById('notes-container');
+            notesContainer.innerHTML = '';
+            notes.forEach((note, index) => {
+                try {
+                    if (note.tags.includes(tag)) {
+                        const noteCard = createNoteCard(note, index);
+                        notesContainer.appendChild(noteCard);
+                    }
+                } catch (error) {
+                    console.error(`Error filtering notes by tag ${tag}:`, error.message);
+                }
+            });
+        }
+
+        function toggleModal() {
+            const modal = document.getElementById('infoModal');
+            modal.classList.toggle('active');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+         
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function toggleAside() {
+            const aside = document.querySelector('aside');
+            aside.classList.toggle('hide');
+        }
+    </script>
+</body>
+
+</html>
